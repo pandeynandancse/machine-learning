@@ -1,79 +1,54 @@
-import requests
-
-def get_movies_from_tastedive(movieName, key="327878-course3p-I4ZNBN4A"):
-    baseurl="https://tastedive.com/api/similar"
-    params_d = {}
-    params_d["q"]= movieName
-    params_d["k"]= key
-    params_d["type"]= "movies"
-    params_d["limit"] = "5"
-    resp = requests.get(baseurl, params=params_d)
-    print(resp.url)
-    respDic = resp.json()
-    return respDic 
-
-def extract_movie_titles(movieName):
-    result=[]
-    for listRes in movieName['Similar']['Results']:
-        result.append(listRes['Name'])
-    return result
-# some invocations that we use in the automated tests; uncomment these if you are getting errors and want better error messages
-# extract_movie_titles(get_movies_from_tastedive("Tony Bennett"))
-# extract_movie_titles(get_movies_from_tastedive("Black Panther"))
-def get_related_titles(listMovieName):
-    if listMovieName != []:
-        auxList=[]
-        relatedList=[]
-        for movieName in listMovieName:
-            auxList = extract_movie_titles(get_movies_from_tastedive(movieName))
-            for movieNameAux in auxList:
-                if movieNameAux not in relatedList:
-                    relatedList.append(movieNameAux)
-        
-        return relatedList
-    return listMovieName
-
-# some invocations that we use in the automated tests; uncomment these if you are getting errors and want better error messages
-# get_related_titles(["Black Panther", "Captain Marvel"])
-# get_related_titles([])
+import requests_with_caching
+import json
 
 
-def get_movie_data(movieName, key="546c6742"):
-    baseurl= "http://www.omdbapi.com/"
-    params_d = {}
-    params_d["t"]= movieName
-    params_d["apikey"]= key
-    params_d["r"]= "json"
-    resp = requests.get(baseurl, params=params_d)
-    print(resp.url)
-    respDic = resp.json()
-    return respDic
-# some invocations that we use in the automated tests; uncomment these if you are getting errors and want better error messages
-# get_movie_data("Venom")
-# get_movie_data("Baby Mama")
+def get_movies_from_tastedive(title):
+    endpoint = 'https://tastedive.com/api/similar'
+    param = {}
+    param['q'] = title
+    param['limit'] = 5
+    param['type'] = 'movies'
 
-def get_movie_rating(movieNameJson):
-    strRanting=""
-    for typeRantingList in movieNameJson["Ratings"]:
-        if typeRantingList["Source"]== "Rotten Tomatoes":
-            strRanting = typeRantingList["Value"]
-    if strRanting != "":
-        ranting = int(strRanting[:2])
-    else: ranting = 0
-    return ranting
-
-# some invocations that we use in the automated tests; uncomment these if you are getting errors and want better error messages
-# get_movie_rating(get_movie_data("Deadpool 2"))
+    this_page_cache = requests_with_caching.get(endpoint, params=param)
+    return json.loads(this_page_cache.text)
 
 
-def get_sorted_recommendations(listMovieTitle):
-    listMovie= get_related_titles(listMovieTitle)
-    listMovie= sorted(listMovie, key = lambda movieName: (get_movie_rating(get_movie_data(movieName)), movieName), reverse=True)
-    
-    return listMovie
+def extract_movie_titles(dic):
+    return ([i['Name'] for i in dic['Similar']['Results']])
 
-print(get_sorted_recommendations(["Bridesmaids", "Sherlock Holmes"]))
 
-# some invocations that we use in the automated tests; uncomment these if you are getting errors and want better error messages
-# get_sorted_recommendations(["Bridesmaids", "Sherlock Holmes"])
+def get_related_titles(movie_list):
+    li = []
+    for movie in movie_list:
+        li.extend(extract_movie_titles(get_movies_from_tastedive(movie)))
+    return list(set(li))
 
+
+def get_movie_data(title):
+    endpoint = 'http://www.omdbapi.com/'
+    param = {}
+    param['t'] = title
+    param['r'] = 'json'
+    this_page_cache = requests_with_caching.get(endpoint, params=param)
+    return json.loads(this_page_cache.text)
+
+
+def get_movie_rating(dic):
+    raking = dic['Ratings']
+    for dic_item in raking:
+        if dic_item['Source'] == 'Rotten Tomatoes':
+            return int(dic_item['Value'][:-1])
+    return 0
+
+
+def get_sorted_recommendations(movie_list):
+    t_r = {}
+    for title in get_related_titles(movie_list):
+        t_r[title] = get_movie_rating(get_movie_data(title))
+    # print([ i[0] for i in sorted(t_r.items(),key=lambda item:(item[1],item[0]),reverse=True)])
+    return [i[0] for i in sorted(t_r.items(), key=lambda item: (item[1], item[0]), reverse=True)]
+
+    # return sorted(t_r.items(),key=lambda item:(item[1],item[0]),reverse=True)
+
+
+get_sorted_recommendations(["Bridesmaids", "Sherlock Holmes"])
